@@ -135,6 +135,10 @@ def iniciar_servidor():
     
     server.bind((HOST, PORT))
     server.listen()
+    
+    # Evita que el socket se bloquee infinitamente
+    server.settimeout(1.0) 
+    
     print(f"{VERDE}=================================================================={RESET}")
     print(f"{VERDE}[SERVIDOR ACTIVO] Escuchando conexiones TCP en {HOST}:{PORT}...{RESET}")
     print(f"{CIAN}[CONFIG] Pool restringido a un maximo estricto de {MAX_WORKERS} Workers.{RESET}")
@@ -142,13 +146,20 @@ def iniciar_servidor():
 
     try:
         while True:
-            conn_client, addr = server.accept()
+            try:
+                conn_client, addr = server.accept()
+            except socket.timeout:
+                # Si pasa 1 segundo sin conexiones, volvemos a evaluar el bucle
+                continue
+            
+            # Si el accept tuvo éxito, tomamos un worker del pool
             workers_pool.acquire()
             
-            hilo_worker = threading.Thread(target=manejar_cliente, args=(conn_client, addr))
+            hilo_worker = threading.Thread(target=manejar_cliente, args=(conn_client, addr), daemon=True)
             hilo_worker.start()
             
     except KeyboardInterrupt:
+        # Cualquier Ctrl+C en el hilo principal (esperando o procesando) cae acá directo
         print(f"\n{ROJO}{get_timestamp()} [APAGANDO SERVIDOR]{RESET} Cerrando sockets y base de datos de manera segura...")
     finally:
         server.close()
